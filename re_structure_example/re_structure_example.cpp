@@ -107,51 +107,54 @@ int setup_socket(SOCKET* res_sock) {
         return 1;
     }
 
-    // No longer need server socket
-    closesocket(ListenSocket);
-
-    // Receive until the peer shuts down the connection
-    do {
-
-        iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
-        if (iResult > 0) {
-            printf("Bytes received: %d\n", iResult);
-
-            // Echo the buffer back to the sender
-            iSendResult = send(ClientSocket, recvbuf, iResult, 0);
-            if (iSendResult == SOCKET_ERROR) {
-                printf("send failed with error: %d\n", WSAGetLastError());
-                closesocket(ClientSocket);
-                WSACleanup();
-                return 1;
-            }
-            printf("Bytes sent: %d\n", iSendResult);
-        }
-        else if (iResult == 0)
-            printf("Connection closing...\n");
-        else {
-            printf("recv failed with error: %d\n", WSAGetLastError());
-            closesocket(ClientSocket);
-            WSACleanup();
-            return 1;
-        }
-
-    } while (iResult > 0);
-
-    // shutdown the connection since we're done
-    iResult = shutdown(ClientSocket, SD_SEND);
-    if (iResult == SOCKET_ERROR) {
-        printf("shutdown failed with error: %d\n", WSAGetLastError());
-        closesocket(ClientSocket);
-        WSACleanup();
-        return 1;
-    }
-
-    // cleanup
-    closesocket(ClientSocket);
-    WSACleanup();
-
+    *res_sock = ClientSocket;
     return 0;
+
+    //// No longer need server socket
+    //closesocket(ListenSocket);
+
+    //// Receive until the peer shuts down the connection
+    //do {
+
+    //    iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
+    //    if (iResult > 0) {
+    //        printf("Bytes received: %d\n", iResult);
+
+    //        // Echo the buffer back to the sender
+    //        iSendResult = send(ClientSocket, recvbuf, iResult, 0);
+    //        if (iSendResult == SOCKET_ERROR) {
+    //            printf("send failed with error: %d\n", WSAGetLastError());
+    //            closesocket(ClientSocket);
+    //            WSACleanup();
+    //            return 1;
+    //        }
+    //        printf("Bytes sent: %d\n", iSendResult);
+    //    }
+    //    else if (iResult == 0)
+    //        printf("Connection closing...\n");
+    //    else {
+    //        printf("recv failed with error: %d\n", WSAGetLastError());
+    //        closesocket(ClientSocket);
+    //        WSACleanup();
+    //        return 1;
+    //    }
+
+    //} while (iResult > 0);
+
+    //// shutdown the connection since we're done
+    //iResult = shutdown(ClientSocket, SD_SEND);
+    //if (iResult == SOCKET_ERROR) {
+    //    printf("shutdown failed with error: %d\n", WSAGetLastError());
+    //    closesocket(ClientSocket);
+    //    WSACleanup();
+    //    return 1;
+    //}
+
+    //// cleanup
+    //closesocket(ClientSocket);
+    //WSACleanup();
+
+    //return 0;
 }
 
 int recv_loop(struct my_struct_t* ms)
@@ -165,23 +168,39 @@ int recv_loop(struct my_struct_t* ms)
 
     //packet = (DWORD*)(a1->buf_E008_recv_buf);
     char* header = (char*)malloc(sizeof(UINT64) * 2);
+    if (!header) {
+        printf("malloc failed\n");
+        exit(-1);
+    }
     next_data_len = 0;
     b_header_recvd = 0;
     ms->total_recvd = 0;
-    *packet = 0;
+    int len_to_recv = 0;
+    //*packet = 0;
     while (1)
     {
         if (ms->total_recvd == 16 )
         {
+            ms->packet.len = ((struct packet_t*)header)->len;
+            ms->packet.type = ((struct packet_t*)header)->type;
             ms->packet.data = (char*)malloc(ms->packet.len);
+            if (!ms->packet.data) {
+                printf("malloc failed\n");
+                exit(-1);
+            }
+            len_to_recv = ms->packet.len - ms->total_recvd;
+            printf("Trying to recieve %d bytes\n", len_to_recv);
+            
             len_recvd = recv(
                 ms->socket,
-                (char*)(ms->packet.data + ms->total_recvd),
+                (char*)(ms->packet.data),
                 ms->packet.len - ms->total_recvd,
                 0);
         }
         else
         {
+            len_to_recv = 16 - ms->total_recvd;
+            printf("Trying to recieve %d bytes\n", len_to_recv);
             len_recvd = recv(ms->socket, (char*)(header + ms->total_recvd), 16 - ms->total_recvd, 0);
         }
         if (len_recvd == -1)
@@ -197,10 +216,10 @@ int recv_loop(struct my_struct_t* ms)
         }
         ms->total_recvd += len_recvd;
         
-        printf("Data length:%d\n", ((struct packet_t*)header)->len);
-        if (ms->total_recvd == (ms->packet.len + 16))
+        if (ms->total_recvd == (ms->packet.len))
         {
             printf("Packet recieved\n");
+            printf("Packet length:%lu\n", ((struct packet_t*)header)->len);
             switch (ms->packet.type)
             {
             case 1:
@@ -232,8 +251,17 @@ int main()
     SOCKET sock;
     int err;
     err = setup_socket(&sock);
+    if (err) {
+        printf("Error during socket initialization\n");
+        exit(-1);
+    }
     struct my_struct_t* ms;
     ms = (struct my_struct_t* )malloc(sizeof(struct my_struct_t));
+    if (!ms) {
+        printf("malloc failed\n");
+        exit(-1);
+    }
+    ms->socket = sock;
     recv_loop(ms);
 
 }
