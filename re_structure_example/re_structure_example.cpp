@@ -10,6 +10,7 @@
 #include <ws2tcpip.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 // Need to link with Ws2_32.lib
 #pragma comment (lib, "Ws2_32.lib")
@@ -165,6 +166,8 @@ int recv_loop(struct my_struct_t* ms)
     int b_header_recvd; // [esp+10h] [ebp-Ch]
     int len_recvd_2; // [esp+14h] [ebp-8h]
     DWORD* packet; // [esp+18h] [ebp-4h]
+    char* response;
+    char* response2;
 
     //packet = (DWORD*)(a1->buf_E008_recv_buf);
     char* header = (char*)malloc(sizeof(UINT64) * 2);
@@ -224,9 +227,15 @@ int recv_loop(struct my_struct_t* ms)
             {
             case 1:
                 printf("Data: %s\n", ms->packet.data);
+                response = (char*)malloc(strlen(ms->packet.data));
+                memcpy(response, ms->packet.data, ms->packet.len - 16);
+                send(ms->socket, response, strlen(ms->packet.data), 0);
+                free(response);
                 break;
             case 2:
                 printf("Test packet recieved\n");
+                response2 = (char*)"pong";
+                send(ms->socket, response2, strlen(response2), 0);
                 break;
             default:
                 printf("Unknown packet type\n");
@@ -241,6 +250,7 @@ int recv_loop(struct my_struct_t* ms)
             return -1;
         }
     }
+    free(ms->packet.data);
     printf("Recv loop end\n");
     return 0;
     
